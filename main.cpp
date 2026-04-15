@@ -42,7 +42,7 @@ double signed_area(int ax, int ay, int bx, int by, int cx, int cy) {
   return (0.5*((by - ay)*(ax + bx) + (cy - by)*(cx + bx) + (ay - cy)*(ax + cx)));
 }
 
-void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, TGAImage &image, TGAImage& zbuffer, const TGAColor &colora, const TGAColor &colorb, const TGAColor &colorc) {
+void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, int cz, TGAImage &image, float* zbuffer, const TGAColor &color) {
 //颜色，深度等其他属性插值：1.先由点坐标与三角形三点的坐标出权重（面积之比） 2.再将三点对应的属性乘相应权重相加求出点的属性
   int maxx = std::max(std::max(ax, bx), cx);
   int maxy = std::max(std::max(ay, by), cy);
@@ -51,6 +51,7 @@ void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, in
 
   double total_area = signed_area(ax, ay, bx, by, cx, cy);
   if(total_area < 1) return;     //total_area < 1 可以防止total_area < 0 的背面面积，或total_area = 0使a、b、c计算时出错，或退化三角形（面积小于1像素的极小三角形
+  
 #pragma omp parallel for       //OpenMP(多线程并行编程库)中专门用于自动将 for 循环拆分成多线程并行执行
   for (int x = minx; x <= maxx; x++) {
     for (int y = miny; y <= maxy; y++) {
@@ -60,18 +61,16 @@ void triangle(int ax, int ay, int az, int bx, int by, int bz, int cx, int cy, in
 
       if (a < 0 || b < 0 || c < 0)
         continue;
-      std::uint8_t color0 = a * colora[0] + b * colorb[0] + c * colorc[0];
-      std::uint8_t color1 = a * colora[1] + b * colorb[1] + c * colorc[1];
-      std::uint8_t color2 = a * colora[2] + b * colorb[2] + c * colorc[2];
-      
-      std::uint8_t z = static_cast<std::uint8_t>(a * az + b * bz + c * cz);        //static_cast<typename>() 静态类型转换,显式类型转换,编译期检查
-      if (z <= zbuffer.get(x, y)[0])
-        continue;
-      image.set(x, y, {color0, color1, color2});
-      zbuffer.set(x, y, {z});
+
+      float z = a * az + b * bz + c * cz;
+      int index = x + y * width;              //将面中的每个像素一行一行排入数组中，下标 = x + y * width;
+      if (z > zbuffer[index]) {
+        zbuffer[index] = z;
+        image.set(x, y, color);
       }
     }
-    }
+  }
+}
     
 std::tuple<int,int,int> trans(vec3 po) {
   return {((po.x + 1.0) * width / 2.0), ((po.y + 1.0) * height / 2.0), ((po.z + 1.0) * 255 / 2.0)};
@@ -83,7 +82,7 @@ int main(int argc, char **argv)
 {
 
   TGAImage framebuffer(width, height, TGAImage::RGB);
-  TGAImage zbuffer(width, height, TGAImage::RGB);
+  std::vector<float> zbuffer(width * height, -1e-10);           //初始化为极小数字
   
   model* model_ = new model("D:\\c_c++  vsc\\tinyrenderer\\obj\\african_head.obj");
   std::cout << model_->nface() << std::endl;
@@ -117,11 +116,13 @@ int main(int argc, char **argv)
     auto [bx, by, bz] = trans(model_->getvertex(face_[1]));
     auto [cx, cy, cz] = trans(model_->getvertex(face_[2]));
 
-    triangle(ax,ay,az,bx,by,bz,cx,cy,cz,framebuffer,zbuffer,red,blue,white);
+    TGAColor rnd;
+    for (int c=0; c<3; c++) rnd[c] = std::rand()%255;
+
+    triangle(ax,ay,az,bx,by,bz,cx,cy,cz,framebuffer,zbuffer.data(),rnd);              //vector.data()返回指向 vector 底层连续内存首元素的原生指针
     }
 
     framebuffer.write_tga_file("framebuffer1.tga");
-    zbuffer.write_tga_file("zbuffer.tga");
-    delete(model_);
+    delete (model_);
   return 0;
 }
