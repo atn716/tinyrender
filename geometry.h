@@ -54,9 +54,9 @@ template <int n> double operator*(const vec<n> &vec1, const vec<n> &vec2) {     
     return result;
 }
 
-template <int n> double norm(const vec<n> &v) { return std::sqrt(v * v); }
+template <int n> double norm(const vec<n> &v) { return std::sqrt(v * v); }         //范数
 
-template <int n> vec<n> normalize(const vec<n> &v) { return v / norm(v); }
+template <int n> vec<n> normalize(const vec<n> &v) { return v / norm(v); }         //求单位向量
 
 template<> struct vec<3> {
     double x = 0, y = 0, z = 0;
@@ -82,6 +82,8 @@ template<> struct vec<4> {
     double x = 0, y = 0, z = 0, w = 0;
     double& operator[](const int i)       { assert(i>=0 && i<4); return i ? (1==i ? y : (2==i ? z : w)) : x; }
     double  operator[](const int i) const { assert(i>=0 && i<4); return i ? (1==i ? y : (2==i ? z : w)) : x; }
+    vec2 getxy() { return {x, y}; }
+    vec3 getxyz() { return {x, y, z}; }
 };
 
 typedef vec<4> vec4;
@@ -108,7 +110,7 @@ template <int r, int c> struct matrix {
       }
     }
 
-    matrix<c, r> transpose() const {
+    matrix<c, r> transpose() const {            //转置
       matrix<c, r> temp;
       for (int i = 0; i < c; i++) {
         for (int j = 0; j < r; j++) {
@@ -119,7 +121,7 @@ template <int r, int c> struct matrix {
     }
 };
 
-template <int n> matrix<n, n> identity() {
+template <int n> matrix<n, n> identity() {          //求单位矩阵
     matrix<n, n> result;
     for (int i = 0; i < n; i++) {
       for (int j = 0; j < n; j++) {
@@ -130,62 +132,33 @@ template <int n> matrix<n, n> identity() {
 }
 
 template <int r, int c>
-matrix<r, c> operator+(const matrix<r, c> &mat1, const matrix<r, c> &mat2) {
-    matrix<r, c> temp;
-    for (int i = 0; i < r; i++) {
-      temp[i] = mat1[i] + mat2[i];
-    }
-    return temp;
-}
-
-template <int r, int c>
-matrix<r, c> operator-(const matrix<r, c> &mat1, const matrix<r, c> &mat2) {
-    matrix<r, c> temp;
-    for (int i = 0; i < r; i++) {
-      temp[i] = mat1[i] - mat2[i];
-    }
-    return temp;
-}
-
-template <int r, int c>
-matrix<r, c> operator*(const double &num, const matrix<r, c> &mat) {
-    matrix<r, c> result;
-    for (int i = 0; i < r; i++) {
-      result[i] = num * mat[i];
-    }
-    return result;
-}
-
-template <int r, int c>
-matrix<r, c> operator/(const matrix<r, c> &mat, const double &num) {
-    matrix<r, c> result;
-    for (int i = 0; i < r; i++) {
-      result[i] = mat[i] / num;
-    }
-    return result;
-}
-
-template <int r, int c>
-vec<r> operator*(const matrix<r, c> &mat, const vec<c> &v) {
-    vec<r> result;
-    for (int i = 0; i < r; i++) {
-      result[i] = mat[i] * v;
-    }
-    return result;
-}
-
-template <int r, int t, int c>
-matrix<r, c> operator*(const matrix<r, t> &mat1, const matrix<t, c> &mat2) {       //矩阵乘法
-    matrix<r, c> result;
-    for (int i = 0; i < r; i++) {
-      for (int j = 0; j < c; j++) {
-        result[i][j] = mat1[i] * mat2.getcolumn(j);
+matrix<r - 1, c - 1> getminor(const matrix<r, c> mat, int row,          // 获得子矩阵
+                              int column) {
+      matrix<r - 1, c - 1> minor;
+      for (int i = 0; i < r - 1; i++) {
+        for (int j = 0; j < c - 1; j++) {
+          minor[i][j] = mat[row > i ? i : i + 1][column > j ? j : j + 1];
+        }
       }
-    }
-    return result;
+
+      return minor;
 }
 
-template <int n> matrix<n, n> inverse(matrix<n, n> origin) {
+template <int n> double det(const matrix<n, n> mat) {         // 计算行列式
+  double result = 0;
+  for (int i = 0; i < n; i++) {
+    int sign = (i % 2 == 0) ? 1 : -1;
+    result += sign*mat[0][i]*det(getminor(mat,0,i));
+  }
+
+  return result;
+}
+
+template <> double det<1>(const matrix<1, 1> mat) {
+  return mat[0][0];
+}
+
+template <int n> matrix<n, n> inverse(matrix<n, n> origin) {            //求逆
     matrix<n, 2 * n> expand;
     for (int i = 0; i < n; i++) {
       for (int j = 0; j < n; j++) {
@@ -228,3 +201,61 @@ template <int n> matrix<n, n> inverse(matrix<n, n> origin) {
 
     return result;
 }
+
+
+template <int r, int c>
+matrix<r, c> operator+(const matrix<r, c> &mat1, const matrix<r, c> &mat2) {
+    matrix<r, c> temp;
+    for (int i = 0; i < r; i++) {
+      temp[i] = mat1[i] + mat2[i];
+    }
+    return temp;
+}
+
+template <int r, int c>
+matrix<r, c> operator-(const matrix<r, c> &mat1, const matrix<r, c> &mat2) {
+    matrix<r, c> temp;
+    for (int i = 0; i < r; i++) {
+      temp[i] = mat1[i] - mat2[i];
+    }
+    return temp;
+}
+
+template <int r, int c>
+matrix<r, c> operator*(const double &num, const matrix<r, c> &mat) {
+    matrix<r, c> result;
+    for (int i = 0; i < r; i++) {
+      result[i] = num * mat[i];
+    }
+    return result;
+}
+
+template <int r, int c>
+matrix<r, c> operator/(const matrix<r, c> &mat, const double &num) {
+    matrix<r, c> result;
+    for (int i = 0; i < r; i++) {
+      result[i] = mat[i] / num;
+    }
+    return result;
+}
+
+template <int r, int c>
+vec<r> operator*(const matrix<r, c> &mat, const vec<c> &v) {              //矩阵和向量乘法
+    vec<r> result;
+    for (int i = 0; i < r; i++) {
+      result[i] = mat[i] * v;
+    }
+    return result;
+}
+
+template <int r, int t, int c>
+matrix<r, c> operator*(const matrix<r, t> &mat1, const matrix<t, c> &mat2) {       //矩阵乘法
+    matrix<r, c> result;
+    for (int i = 0; i < r; i++) {
+      for (int j = 0; j < c; j++) {
+        result[i][j] = mat1[i] * mat2.getcolumn(j);
+      }
+    }
+    return result;
+}
+

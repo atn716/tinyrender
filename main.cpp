@@ -82,7 +82,7 @@ int main(int argc, char **argv)
 {
 
   TGAImage framebuffer(width, height, TGAImage::RGB);
-  std::vector<float> zbuffer(width * height, -1e-10);           //初始化为极小数字
+  std::vector<float> zbuffer(width * height, -1e-10);           //初始化为极小数字,无穷小
   
   model* model_ = new model("D:\\c_c++  vsc\\tinyrenderer\\obj\\african_head.obj");
   std::cout << model_->nface() << std::endl;
