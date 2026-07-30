@@ -154,7 +154,7 @@ template <int n> double det(const matrix<n, n> mat) {         // 计算行列式
   return result;
 }
 
-template <> double det<1>(const matrix<1, 1> mat) {
+template <> inline double det<1>(const matrix<1, 1> mat) {
   return mat[0][0];
 }
 

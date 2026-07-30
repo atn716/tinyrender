@@ -155,8 +155,8 @@ void view(const int x, const int y, const int w, const int h) {        //视图�
                        {0, 0, 0, 1}}};
 }
 
-void rasterize(vec4 clip[3], TGAImage &image, std::vector<double> zbuffer,
-               const TGAColor &color) {             //clip[3]为三角形三条边
+void rasterize(vec4 clip[3], TGAImage &image, std::vector<float> &zbuffer,
+               const TGAColor &color) {  //clip[3]为三角形三条边. 参数使用引用可以改变原始数据，若不使用引用则会拷贝副本，修改的也是副本数据
   vec4 ndc[3] = {clip[0] / clip[0].w, clip[1] / clip[1].w, clip[2] / clip[2].w};    //除以w将原图形放入ndc坐标中同时实现透视坐标的转换，再进行视图变换以防坐标与屏幕不适配
   vec2 screen[3] = {(View * ndc[0]).getxy(), (View * ndc[1]).getxy(),
                     (View * ndc[2]).getxy()};
@@ -182,7 +182,7 @@ void rasterize(vec4 clip[3], TGAImage &image, std::vector<double> zbuffer,
       if (abc.x < 0 || abc.y < 0 || abc.z < 0)         //小于0说明该面为模型的背面，不用画
         continue;
 
-      double z = abc * vec3{clip[0].z, clip[1].z, clip[2].z};
+      double z = abc * vec3{ndc[0].z, ndc[1].z, ndc[2].z};
       int index = x + y * image.width();
       if (z > zbuffer[index]) {
         zbuffer[index] = z;
@@ -192,6 +192,44 @@ void rasterize(vec4 clip[3], TGAImage &image, std::vector<double> zbuffer,
   }
 }
 
-int main() {
+int main(int argc, char **argv) {      //argc（Argument Count，参数个数）：当你从命令行（终端）启动程序时，系统会自动传入这个数字
+  //argv 的全称是 Argument Vector（参数向量/参数字符串数组）,把你在命令行（终端）里敲下的那一长串命令，按空格拆开，一个一个存进这个数组里
+  if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " obj/model.obj" << std::endl;
+        return 1;
+  }
   
+  constexpr int width = 800;
+  constexpr int height = 800;
+
+  TGAImage framebuffer(width, height, TGAImage::RGB);
+  std::vector<float> zbuffer(width * height, -std::numeric_limits<double>::max());       // 初始化为极小数字,无穷小，-std::numeric_limits<double>::max() 代表的是 double 浮点数能表示的“最小负数”（也就是绝对值最大的负值）
+
+  constexpr vec3 center{0, 0, 0};
+  constexpr vec3 eye{-1,0,2};
+  constexpr vec3 up{0, 1, 0};
+
+  model(center, eye, up);
+  perspective(norm(eye - center));
+  view(width / 16, height / 16, width * 7 / 8, height * 7 / 8);
+
+  for (int j = 1; j < argc; j++) {
+    class model *model_ = new class model(argv[j]);
+    for (int i = 0; i < model_->nface(); i++) {
+      std::vector<int> face_ = model_->getface(i);
+
+      vec4 clip[3];
+      for (int k = 0; k < 3; k++) {
+        auto [x, y, z] = model_->getvertex(face_[k]);
+        clip[k] = Perspective * Model * vec4{x, y, z, 1};
+      }
+
+      rasterize(clip, framebuffer, zbuffer, red);
+    }
+    delete model_;
+  }
+
+  framebuffer.write_tga_file("framebuffer1.tga");
+
+  return 0;
 }
