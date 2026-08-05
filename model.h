@@ -1,3 +1,4 @@
+#pragma once
 #include <string>
 #include <vector>
 #include "geometry.h"
@@ -11,6 +12,7 @@ public:
   model(const std::string filename);
   int nvertex() { return vertex.size(); }
   int nface() { return face.size(); }
-  vec3 getvertex(int i) const { return vertex[i]; }
-  std::vector<int> getface(int i) const { return face[i]; }
+  vec3 getvertex(const int i) const { return vertex[i]; }
+  vec3 getvertex(const int face_index, const int vertex_index) const { return vertex[face[face_index][vertex_index]]; }
+  std::vector<int> getface(const int i) const { return face[i]; }
 };
