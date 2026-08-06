@@ -137,31 +137,81 @@ constexpr TGAColor yellow = {0, 200, 255, 255};
 extern matrix<4, 4> Model, Perspective, View;
 extern std::vector<float> zbuffer;
 
-class RandomShader : public Shader
+// class PhongShader : public Shader
+// {
+// private:
+//   const class model &model_;
+//   vec4 camera_pos;
+//   TGAColor color = {};
+
+// public:
+//   PhongShader(const class model &m) : model_(m) {};
+
+//   void setColor(std::uint8_t a, std::uint8_t b, std::uint8_t c, std::uint8_t d)
+//   {
+//     color = {a, b, c, d};
+//   }
+
+//   virtual vec4 vertex(const int face_index, const int vertex_index) // 点着色器，处理单个点
+//   {
+//     vec4 clip_position;
+//     auto [x, y, z] = model_.getvertex(face_index, vertex_index);
+//     camera_pos = Model * vec4{x, y, z, 1};
+//     clip_position = Perspective * camera_pos;
+
+//     return clip_position;
+//   }
+
+//   virtual std::pair<bool, TGAColor> fragment(const vec3 &abc) const   //片元着色器
+//   {
+//     return {false, color};
+//   }
+// };
+
+class PhongShader : public Shader
 {
 private:
   const class model &model_;
-  TGAColor color = {};
+  vec3 camera_pos[3];
+  vec3 l; // 指向光源的向量
 
 public:
-  RandomShader(const class model &m) : model_(m) {};
-
-  void setColor(std::uint8_t a, std::uint8_t b, std::uint8_t c, std::uint8_t d)
+  PhongShader(const class model &m, const vec3 light) : model_(m)
   {
-    color = {a, b, c, d};
+    l = (Model * vec4{light.x, light.y, light.z, 0.0}).getxyz();
   }
 
   virtual vec4 vertex(const int face_index, const int vertex_index) // 点着色器，处理单个点
   {
     vec4 clip_position;
     auto [x, y, z] = model_.getvertex(face_index, vertex_index);
+    camera_pos[vertex_index] = (Model * vec4{x, y, z, 1}).getxyz();
     clip_position = Perspective * Model * vec4{x, y, z, 1};
 
     return clip_position;
   }
 
-  virtual std::pair<bool, TGAColor> fragment(const vec3 &abc) const   //片元着色器
+  virtual std::pair<bool, TGAColor> fragment(const vec3 &abc) const // 片元着色器
   {
+    TGAColor AlbedoColor = white;
+    TGAColor color = AlbedoColor;
+    vec3 n = normalize(cross((camera_pos[0] - camera_pos[1]), (camera_pos[0] - camera_pos[2]))); // 片元法向量
+    vec3 r = normalize(2 * (l * n) * n - l);
+    double x = abc * vec3{camera_pos[0].x, camera_pos[1].x, camera_pos[2].x};
+    double y = abc * vec3{camera_pos[0].y, camera_pos[1].y, camera_pos[2].y};
+    double z = abc * vec3{camera_pos[0].z, camera_pos[1].z, camera_pos[2].z};
+    double diff = std::max(0., l * n);
+    double spec = std::pow(std::max(0., r * normalize(vec3{-x, -y, -z})), 2); // std::pow(底数, 指数),#include <cmath>
+
+    double ambient = 0.2;
+    double diffuse = 0.4 * diff;
+    double specular = 0.9 * spec;
+
+    for (int i = 0; i < 3; i++)
+    {
+      color[i] = AlbedoColor[i] * std::min(1., ambient + diffuse + specular);         //假设物体固有色与光的颜色相同
+    }
+
     return {false, color};
   }
 };
@@ -184,6 +234,7 @@ int main(int argc, char **argv)
   constexpr vec3 center{0, 0, 0};
   constexpr vec3 eye{-1, 0, 2};
   constexpr vec3 up{0, 1, 0};
+  constexpr vec3 light{1, 1, 1};
 
   model(center, eye, up);
   perspective(norm(eye - center));
@@ -194,8 +245,8 @@ int main(int argc, char **argv)
     class model model_(argv[j]);
     for (int i = 0; i < model_.nface(); i++)
     {
-      RandomShader shader(model_);
-      shader.setColor(std::rand() % 255, std::rand() % 255, std::rand() % 255, 255);
+      PhongShader shader(model_, light);
+      //shader.setColor(std::rand() % 255, std::rand() % 255, std::rand() % 255, 255);
       Triangle clip = {shader.vertex(i, 0), shader.vertex(i, 1), shader.vertex(i, 2)};
       rasterize(clip, framebuffer, shader);
     }
@@ -204,4 +255,4 @@ int main(int argc, char **argv)
   framebuffer.write_tga_file("framebuffer1.tga");
 
   return 0;
-}
+};
