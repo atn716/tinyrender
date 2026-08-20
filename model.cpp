@@ -4,10 +4,10 @@
 #include <iostream>
 #include <string>
 
-model::model(const std::string filename)
+model::model(const std::string &filename_obj, const std::string &filename_tga)
 {
   std::ifstream in;
-  in.open(filename);
+  in.open(filename_obj);
   if (in.fail())
   {
     std::cout << "open file fail" << std::endl;
@@ -38,8 +38,8 @@ model::model(const std::string filename)
     else if (!line.compare(0, 3, "vt "))
     {
       iss >> first;
-      vec3 texture_;
-      iss >> texture_.x >> texture_.y >> texture_.z;
+      vec2 texture_;
+      iss >> texture_.x >> texture_.y;
       texture.push_back(texture_);
     }
     else if (!line.compare(0, 2, "f "))
@@ -68,5 +68,11 @@ model::model(const std::string filename)
       face_t.push_back(t);
       face_n.push_back(n);
     }
+  }
+
+  if (!load_map(filename_tga))
+  {
+    std::cerr << "failed to load normal map\n";
+    // std::cerr << 是用来向控制台（终端）输出错误信息或警告信息的
   }
 }
