@@ -4,7 +4,7 @@
 #include <iostream>
 #include <string>
 
-model::model(const std::string &filename_obj, const std::string &filename_tga)
+model::model(const std::string &filename_obj, const std::string &filename_tex, const std::string &filename_diff)
 {
   std::ifstream in;
   in.open(filename_obj);
@@ -70,9 +70,14 @@ model::model(const std::string &filename_obj, const std::string &filename_tga)
     }
   }
 
-  if (!load_map(filename_tga))
+  if (!load_tex_map(filename_tex))
   {
     std::cerr << "failed to load normal map\n";
     // std::cerr << 是用来向控制台（终端）输出错误信息或警告信息的
+  }
+
+  if (!load_dif_map(filename_diff))
+  {
+    std::cerr << "failed to load diffuse map\n";
   }
 }

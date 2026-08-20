@@ -198,10 +198,10 @@ public:
 
   virtual std::pair<bool, TGAColor> fragment(const vec3 &abc) const // 片元着色器
   {
-    TGAColor AlbedoColor = white;
-    TGAColor color = AlbedoColor;
-    // vec3 n = normalize(cross((camera_pos[0] - camera_pos[1]), (camera_pos[0] - camera_pos[2]))); // 片元法向量
-    // vec3 n = normalize(abc[0] * normal_cam[0] + abc[1] * normal_cam[1] + abc[2] * normal_cam[2]);
+    // TGAColor AlbedoColor = white;
+    // TGAColor color = AlbedoColor;
+    //  vec3 n = normalize(cross((camera_pos[0] - camera_pos[1]), (camera_pos[0] - camera_pos[2]))); // 片元法向量
+    //  vec3 n = normalize(abc[0] * normal_cam[0] + abc[1] * normal_cam[1] + abc[2] * normal_cam[2]);
     vec2 uv = abc[0] * uv_pos[0] + abc[1] * uv_pos[1] + abc[2] * uv_pos[2];
     vec3 n = normalize(model_.getnormal(uv));
     vec3 r = normalize(2 * (l * n) * n - l);
@@ -215,6 +215,9 @@ public:
     double ambient = 0.2;
     double diffuse = 0.4 * diff;
     double specular = 0.9 * spec;
+
+    TGAColor AlbedoColor = model_.getdiffuse(uv);
+    TGAColor color = AlbedoColor;
 
     for (int i = 0; i < 3; i++)
     {
@@ -249,9 +252,9 @@ int main(int argc, char **argv)
   perspective(norm(eye - center));
   view(width / 16, height / 16, width * 7 / 8, height * 7 / 8);
 
-  for (int j = 1; j < argc; j = j + 2)
+  for (int j = 1; j < argc; j = j + 3)
   {
-    class model model_(argv[j], argv[j + 1]);
+    class model model_(argv[j], argv[j + 1], argv[j + 2]);
     for (int i = 0; i < model_.nface(); i++)
     {
       PhongShader shader(model_, light);

@@ -13,9 +13,10 @@ private:
   std::vector<vec2> texture = {}; // 存储纹理信息
   std::vector<std::vector<int>> face_t = {};
   TGAImage tex_map = {};
+  TGAImage diffuse_map = {};
 
 public:
-  model(const std::string &filename_obj, const std::string &filename_tga);
+  model(const std::string &filename_obj, const std::string &filename_tex, const std::string &filename_diff);
   int nvertex() { return vertex.size(); }
   int nface() { return face_v.size(); }
   vec3 getvertex(const int i) const { return vertex[i]; }
@@ -39,8 +40,18 @@ public:
     return n;
   }
 
+  TGAColor getdiffuse(const vec2 uv) const
+  {
+    int x_diffuse = static_cast<int>(uv[0] * diffuse_map.width());
+    int y_diffuse = static_cast<int>((1.0 - uv[1]) * diffuse_map.height());
+    TGAColor Color = diffuse_map.get(x_diffuse, y_diffuse);
+
+    return Color;
+  }
+
   vec2 getuv(const int face_index, const int vertex_index) const { return texture[face_t[face_index][vertex_index]]; }
   std::vector<int> getface(const int i) const { return face_v[i]; }
 
-  bool load_map(const std::string &filename) { return tex_map.read_tga_file(filename); }
+  bool load_tex_map(const std::string &filename) { return tex_map.read_tga_file(filename); }
+  bool load_dif_map(const std::string &filename) { return diffuse_map.read_tga_file(filename); }
 };
