@@ -232,9 +232,9 @@ public:
 int main(int argc, char **argv)
 { // argc（Argument Count，参数个数）：当你从命令行（终端）启动程序时，系统会自动传入这个数字
   // argv 的全称是 Argument Vector（参数向量/参数字符串数组）,把你在命令行（终端）里敲下的那一长串命令，按空格拆开，一个一个存进这个数组里
-  if (argc < 2)
+  if (argc < 5 || (argc - 1) % 4 != 0)
   {
-    std::cerr << "Usage: " << argv[0] << " obj/model.obj" << std::endl;
+    std::cerr << "Usage: main.exe obj normal.tga diffuse.tga spec.tga [...]\n";
     return 1;
   }
 
