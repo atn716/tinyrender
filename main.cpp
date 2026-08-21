@@ -211,10 +211,11 @@ public:
 
     double diff = std::max(0., l * n);
     double spec = std::pow(std::max(0., r * normalize(vec3{-x, -y, -z})), 32); // std::pow(底数, 指数),#include <cmath>
+    double spec_intensity = model_.getspec(uv);
 
     double ambient = 0.2;
     double diffuse = 0.4 * diff;
-    double specular = 0.9 * spec;
+    double specular = 0.9 * spec_intensity * spec;
 
     TGAColor AlbedoColor = model_.getdiffuse(uv);
     TGAColor color = AlbedoColor;
@@ -252,9 +253,9 @@ int main(int argc, char **argv)
   perspective(norm(eye - center));
   view(width / 16, height / 16, width * 7 / 8, height * 7 / 8);
 
-  for (int j = 1; j < argc; j = j + 3)
+  for (int j = 1; j < argc; j = j + 4)
   {
-    class model model_(argv[j], argv[j + 1], argv[j + 2]);
+    class model model_(argv[j], argv[j + 1], argv[j + 2], argv[j + 3]);
     for (int i = 0; i < model_.nface(); i++)
     {
       PhongShader shader(model_, light);

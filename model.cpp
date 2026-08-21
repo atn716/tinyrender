@@ -4,7 +4,7 @@
 #include <iostream>
 #include <string>
 
-model::model(const std::string &filename_obj, const std::string &filename_tex, const std::string &filename_diff)
+model::model(const std::string &filename_obj, const std::string &filename_tex, const std::string &filename_diff, const std::string &filename_spec)
 {
   std::ifstream in;
   in.open(filename_obj);
@@ -70,14 +70,69 @@ model::model(const std::string &filename_obj, const std::string &filename_tex, c
     }
   }
 
-  if (!load_tex_map(filename_tex))
+  if (!load_map(filename_tex, tex_map))
   {
     std::cerr << "failed to load normal map\n";
     // std::cerr << 是用来向控制台（终端）输出错误信息或警告信息的
   }
 
-  if (!load_dif_map(filename_diff))
+  if (!load_map(filename_diff, diffuse_map))
   {
     std::cerr << "failed to load diffuse map\n";
   }
+
+  if (!load_map(filename_spec, spec_map))
+  {
+    std::cerr << "failed to load specular map\n";
+  }
 }
+
+TGAColor model::getcolor(const vec2 uv, const TGAImage &map) const
+{
+  int x = static_cast<int>(uv[0] * map.width());
+  int y = static_cast<int>((1.0 - uv[1]) * map.height());
+  // UV 坐标原点不一致，需翻转y坐标
+
+  TGAColor c = map.get(x, y);
+
+  return c;
+}
+
+vec3 model::getvertex(const int i) const { return vertex[i]; }
+
+vec3 model::getvertex(const int face_index, const int vertex_index) const { return vertex[face_v[face_index][vertex_index]]; }
+
+vec3 model::getnormal(const int i) const { return normal[i]; }
+
+vec3 model::getnormal(const int face_index, const int vertex_index) const { return normal[face_n[face_index][vertex_index]]; }
+
+vec3 model::getnormal(const vec2 uv) const
+{ // 通过法线贴图解析法线
+  TGAColor c = getcolor(uv, tex_map);
+  vec3 n;
+  for (int i = 0; i < 3; i++)
+  {
+    n[i] = (double)(c[i] / 255.0) * 2 - 1.;
+  }
+
+  return n;
+}
+
+TGAColor model::getdiffuse(const vec2 uv) const
+{
+  TGAColor Color = getcolor(uv, diffuse_map);
+
+  return Color;
+}
+
+double model::getspec(const vec2 uv) const
+{
+  TGAColor spec_color = getcolor(uv, spec_map);
+  double spec_intensity = spec_color[0] / 255.;
+
+  return spec_intensity;
+}
+
+vec2 model::getuv(const int face_index, const int vertex_index) const { return texture[face_t[face_index][vertex_index]]; }
+
+std::vector<int> model::getface(const int i) const { return face_v[i]; }
