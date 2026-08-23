@@ -42,7 +42,7 @@ void view(const int x, const int y, const int w, const int h)
 
 void rasterize(const Triangle &clip, TGAImage &image, const Shader &shader)
 { // 基类引用或指针可以指向派生类
-  // clip[3]为三角形三条边. 参数使用引用可以改变原始数据，若不使用引用则会拷贝副本，修改的也是副本数据
+  // clip[3]为三角形三个顶点. 参数使用引用可以改变原始数据，若不使用引用则会拷贝副本，修改的也是副本数据
   vec4 ndc[3] = {clip[0] / clip[0].w, clip[1] / clip[1].w, clip[2] / clip[2].w}; // 除以w将原图形放入ndc坐标中同时实现透视坐标的转换，再进行视图变换以防坐标与屏幕不适配
   vec2 screen[3] = {(View * ndc[0]).getxy(), (View * ndc[1]).getxy(),
                     (View * ndc[2]).getxy()};
@@ -65,12 +65,15 @@ void rasterize(const Triangle &clip, TGAImage &image, const Shader &shader)
     for (int y = std::max(miny, 0);
          y <= std::min(maxy, image.height() - 1); y++)
     {
-      vec3 abc =                                                                  // 权重
+      vec3 screen_abc =                                                           // 权重
           inverse(ABC) * vec3{static_cast<double>(x), static_cast<double>(y), 1}; // static_cast<double>(x)将x安全地转换为double
-      if (abc.x < 0 || abc.y < 0 || abc.z < 0)                                    // 小于0说明该面为模型的背面，不用画
+      if (screen_abc.x < 0 || screen_abc.y < 0 || screen_abc.z < 0)               // 小于0说明该面为模型的背面，不用画
         continue;
 
-      double z = abc * vec3{ndc[0].z, ndc[1].z, ndc[2].z};
+      vec3 abc = {screen_abc.x / clip[0].w, screen_abc.y / clip[1].w, screen_abc.z / clip[2].w};
+      abc = abc / (abc.x + abc.y + abc.z);
+
+      double z = screen_abc * vec3{ndc[0].z, ndc[1].z, ndc[2].z};
       int index = x + y * image.width();
       if (z > zbuffer[index])
       {

@@ -173,9 +173,9 @@ class PhongShader : public Shader
 private:
   const class model &model_;
   vec3 camera_pos[3];
-  // vec3 normal_cam[3]; // 相机空间下的法向量
-  vec3 l;         // 指向光源的向量
-  vec2 uv_pos[3]; // uv空间坐标
+  vec3 normal_cam[3]; // 相机空间下的法向量
+  vec3 l;             // 指向光源的向量
+  vec2 uv_pos[3];     // uv空间坐标
 
 public:
   PhongShader(const class model &m, const vec3 light) : model_(m)
@@ -188,8 +188,8 @@ public:
     vec4 clip_position;
     auto [x, y, z] = model_.getvertex(face_index, vertex_index);
     camera_pos[vertex_index] = (Model * vec4{x, y, z, 1}).getxyz();
-    // vec3 n = model_.getnormal(face_index, vertex_index);
-    // normal_cam[vertex_index] = (((inverse(Model)).transpose()) * vec4{n.x, n.y, n.z, 0.}).getxyz();
+    vec3 n = model_.getnormal(face_index, vertex_index);
+    normal_cam[vertex_index] = (((inverse(Model)).transpose()) * vec4{n.x, n.y, n.z, 0.}).getxyz();
     uv_pos[vertex_index] = model_.getuv(face_index, vertex_index);
     clip_position = Perspective * Model * vec4{x, y, z, 1};
 
@@ -201,10 +201,23 @@ public:
     // TGAColor AlbedoColor = white;
     // TGAColor color = AlbedoColor;
     //  vec3 n = normalize(cross((camera_pos[0] - camera_pos[1]), (camera_pos[0] - camera_pos[2]))); // 片元法向量
-    //  vec3 n = normalize(abc[0] * normal_cam[0] + abc[1] * normal_cam[1] + abc[2] * normal_cam[2]);
+    vec3 n_world = normalize(abc[0] * normal_cam[0] + abc[1] * normal_cam[1] + abc[2] * normal_cam[2]);
     vec2 uv = abc[0] * uv_pos[0] + abc[1] * uv_pos[1] + abc[2] * uv_pos[2];
-    vec3 n = normalize(model_.getnormal(uv));
+    vec3 n_tangent = normalize(model_.getnormal(uv));
+
+    matrix<2, 3> E = {camera_pos[1] - camera_pos[0], camera_pos[2] - camera_pos[0]};
+    matrix<2, 2> U = {uv_pos[1] - uv_pos[0], uv_pos[2] - uv_pos[0]};
+
+    vec3 n = n_world;
+    if (std::abs(det(U)) > 1e-8)
+    {
+      matrix<2, 3> TB = inverse(U) * E;
+      matrix<3, 3> TBN = {TB[0], TB[1], n_world};
+      n = normalize(TBN.transpose() * n_tangent);
+    }
+
     vec3 r = normalize(2 * (l * n) * n - l);
+
     double x = abc * vec3{camera_pos[0].x, camera_pos[1].x, camera_pos[2].x};
     double y = abc * vec3{camera_pos[0].y, camera_pos[1].y, camera_pos[2].y};
     double z = abc * vec3{camera_pos[0].z, camera_pos[1].z, camera_pos[2].z};

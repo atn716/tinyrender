@@ -110,10 +110,9 @@ vec3 model::getnormal(const vec2 uv) const
 { // 通过法线贴图解析法线
   TGAColor c = getcolor(uv, tex_map);
   vec3 n;
-  for (int i = 0; i < 3; i++)
-  {
-    n[i] = (double)(c[i] / 255.0) * 2 - 1.;
-  }
+  n.x = c[2] / 255.0 * 2.0 - 1.0; // R → X
+  n.y = c[1] / 255.0 * 2.0 - 1.0; // G → Y
+  n.z = c[0] / 255.0 * 2.0 - 1.0; // B → Z
 
   return n;
 }
