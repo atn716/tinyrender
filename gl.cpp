@@ -3,49 +3,54 @@
 matrix<4, 4> Model;
 matrix<4, 4> Perspective;
 matrix<4, 4> View;
-std::vector<float> zbuffer;
+std::vector<double> zbuffer;
 
-void set_zbuffer(const int width, const int height)
+matrix<4, 4> Model_shadow;
+matrix<4, 4> Perspective_shadow;
+matrix<4, 4> View_shadow;
+std::vector<double> zbuffer_shadow;
+
+void set_zbuffer(const int width, const int height, std::vector<double> &depth_buffer)
 {
-  zbuffer = std::vector<float>(width * height, -std::numeric_limits<double>::max()); // 初始化为极小数字,无穷小，-std::numeric_limits<double>::max() 代表的是 double 浮点数能表示的“最小负数”（也就是绝对值最大的负值）
+  depth_buffer = std::vector<double>(width * height, -std::numeric_limits<double>::max()); // 初始化为极小数字,无穷小，-std::numeric_limits<double>::max() 代表的是 double 浮点数能表示的“最小负数”（也就是绝对值最大的负值）
 }
 
-void model(const vec3 center, const vec3 eye, const vec3 up)
+void model(const vec3 center, const vec3 eye, const vec3 up, matrix<4, 4> &Model_matrix)
 { // 转换至相机坐标系
   vec3 n = normalize(eye - center);
   vec3 l = normalize(cross(up, n));
   vec3 m = normalize(cross(n, l));
 
-  Model = matrix<4, 4>{{{l.x, l.y, l.z, 0},
-                        {m.x, m.y, m.z, 0},
-                        {n.x, n.y, n.z, 0},
-                        {0, 0, 0, 1}}} *
-          matrix<4, 4>{{{1, 0, 0, -center.x},
-                        {0, 1, 0, -center.y},
-                        {0, 0, 1, -center.z},
-                        {0, 0, 0, 1}}};
+  Model_matrix = matrix<4, 4>{{{l.x, l.y, l.z, 0},
+                               {m.x, m.y, m.z, 0},
+                               {n.x, n.y, n.z, 0},
+                               {0, 0, 0, 1}}} *
+                 matrix<4, 4>{{{1, 0, 0, -center.x},
+                               {0, 1, 0, -center.y},
+                               {0, 0, 1, -center.z},
+                               {0, 0, 0, 1}}};
 }
 
-void perspective(const double f)
+void perspective(const double f, matrix<4, 4> &Perspective_matrix)
 { // 透视矩阵
-  Perspective = matrix<4, 4>{
+  Perspective_matrix = matrix<4, 4>{
       {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {0, 0, -1 / f, 1}}};
 }
 
-void view(const int x, const int y, const int w, const int h)
+void view(const int x, const int y, const int w, const int h, matrix<4, 4> &View_matrix)
 { // 视图矩阵
-  View = matrix<4, 4>{{{w / 2., 0, 0, x + w / 2.},
-                       {0, h / 2., 0, y + h / 2.},
-                       {0, 0, 1, 0},
-                       {0, 0, 0, 1}}};
+  View_matrix = matrix<4, 4>{{{w / 2., 0, 0, x + w / 2.},
+                              {0, h / 2., 0, y + h / 2.},
+                              {0, 0, 1, 0},
+                              {0, 0, 0, 1}}};
 }
 
-void rasterize(const Triangle &clip, TGAImage &image, const Shader &shader)
+void rasterize(const Triangle &clip, TGAImage &image, const Shader &shader, const matrix<4, 4> &View_matrix, std::vector<double> &depth_buffer)
 { // 基类引用或指针可以指向派生类
   // clip[3]为三角形三个顶点. 参数使用引用可以改变原始数据，若不使用引用则会拷贝副本，修改的也是副本数据
   vec4 ndc[3] = {clip[0] / clip[0].w, clip[1] / clip[1].w, clip[2] / clip[2].w}; // 除以w将原图形放入ndc坐标中同时实现透视坐标的转换，再进行视图变换以防坐标与屏幕不适配
-  vec2 screen[3] = {(View * ndc[0]).getxy(), (View * ndc[1]).getxy(),
-                    (View * ndc[2]).getxy()};
+  vec2 screen[3] = {(View_matrix * ndc[0]).getxy(), (View_matrix * ndc[1]).getxy(),
+                    (View_matrix * ndc[2]).getxy()};
 
   matrix<3, 3> ABC = matrix<3, 3>{{{screen[0].x, screen[1].x, screen[2].x}, // 面积矩阵，其行列式即为三角形的有方向面积*2
                                    {screen[0].y, screen[1].y, screen[2].y},
@@ -75,7 +80,7 @@ void rasterize(const Triangle &clip, TGAImage &image, const Shader &shader)
 
       double z = screen_abc * vec3{ndc[0].z, ndc[1].z, ndc[2].z};
       int index = x + y * image.width();
-      if (z > zbuffer[index])
+      if (z > depth_buffer[index])
       {
         auto [discard, color] = shader.fragment(abc);
         if (discard)
@@ -85,7 +90,7 @@ void rasterize(const Triangle &clip, TGAImage &image, const Shader &shader)
 
         if (alpha >= 1.)
         { // 不透明：覆盖颜色，并写入深度
-          zbuffer[index] = z;
+          depth_buffer[index] = z;
           image.set(x, y, color);
         }
         else

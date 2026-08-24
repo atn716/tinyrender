@@ -135,7 +135,10 @@ constexpr TGAColor yellow = {0, 200, 255, 255};
 // }
 
 extern matrix<4, 4> Model, Perspective, View;
-extern std::vector<float> zbuffer;
+extern std::vector<double> zbuffer;
+
+extern matrix<4, 4> Model_shadow, Perspective_shadow, View_shadow;
+extern std::vector<double> zbuffer_shadow;
 
 // class PhongShader : public Shader
 // {
@@ -168,17 +171,42 @@ extern std::vector<float> zbuffer;
 //   }
 // };
 
+class ShadowShader : public Shader
+{
+private:
+  const class model &model_;
+
+public:
+  ShadowShader(const class model &m) : model_(m) {}
+
+  virtual vec4 vertex(const int face_index, const int vertex_index)
+  {
+    vec4 clip_position;
+    auto [x, y, z] = model_.getvertex(face_index, vertex_index);
+    clip_position = Perspective_shadow * Model_shadow * vec4{x, y, z, 1};
+
+    return clip_position;
+  }
+
+  virtual std::pair<bool, TGAColor> fragment(const vec3 &abc) const
+  {
+    return {false, white};
+  }
+};
+
 class PhongShader : public Shader
 {
 private:
   const class model &model_;
-  vec3 camera_pos[3];
+  const TGAImage &Image;
+  vec3 camera_pos[3]; // 相机空间下坐标
+  vec3 world_pos[3];  // 世界空间下坐标
   vec3 normal_cam[3]; // 相机空间下的法向量
   vec3 l;             // 指向光源的向量
   vec2 uv_pos[3];     // uv空间坐标
 
 public:
-  PhongShader(const class model &m, const vec3 light) : model_(m)
+  PhongShader(const class model &m, const TGAImage &image, const vec3 light) : model_(m), Image(image)
   {
     l = normalize((Model * vec4{light.x, light.y, light.z, 0.0}).getxyz());
   }
@@ -187,6 +215,7 @@ public:
   {
     vec4 clip_position;
     auto [x, y, z] = model_.getvertex(face_index, vertex_index);
+    world_pos[vertex_index] = vec3{x, y, z};
     camera_pos[vertex_index] = (Model * vec4{x, y, z, 1}).getxyz();
     vec3 n = model_.getnormal(face_index, vertex_index);
     normal_cam[vertex_index] = (((inverse(Model)).transpose()) * vec4{n.x, n.y, n.z, 0.}).getxyz();
@@ -212,30 +241,46 @@ public:
     if (std::abs(det(U)) > 1e-8)
     {
       matrix<2, 3> TB = inverse(U) * E;
-      matrix<3, 3> TBN = {TB[0], TB[1], n_world};
+      matrix<3, 3> TBN = {normalize(TB[0]), normalize(TB[1]), n_world};
       n = normalize(TBN.transpose() * n_tangent);
     }
 
     vec3 r = normalize(2 * (l * n) * n - l);
 
-    double x = abc * vec3{camera_pos[0].x, camera_pos[1].x, camera_pos[2].x};
-    double y = abc * vec3{camera_pos[0].y, camera_pos[1].y, camera_pos[2].y};
-    double z = abc * vec3{camera_pos[0].z, camera_pos[1].z, camera_pos[2].z};
+    double x_camera = abc * vec3{camera_pos[0].x, camera_pos[1].x, camera_pos[2].x};
+    double y_camera = abc * vec3{camera_pos[0].y, camera_pos[1].y, camera_pos[2].y};
+    double z_camera = abc * vec3{camera_pos[0].z, camera_pos[1].z, camera_pos[2].z};
 
     double diff = std::max(0., l * n);
-    double spec = std::pow(std::max(0., r * normalize(vec3{-x, -y, -z})), 32); // std::pow(底数, 指数),#include <cmath>
+    double spec = std::pow(std::max(0., r * normalize(vec3{-x_camera, -y_camera, -z_camera})), 32); // std::pow(底数, 指数),#include <cmath>
     double spec_intensity = model_.getspec(uv);
 
-    double ambient = 0.2;
+    double ambient = 0.3;
     double diffuse = 0.4 * diff;
     double specular = 0.9 * spec_intensity * spec;
 
     TGAColor AlbedoColor = model_.getdiffuse(uv);
     TGAColor color = AlbedoColor;
 
+    double x_world = abc * vec3{world_pos[0].x, world_pos[1].x, world_pos[2].x};
+    double y_world = abc * vec3{world_pos[0].y, world_pos[1].y, world_pos[2].y};
+    double z_world = abc * vec3{world_pos[0].z, world_pos[1].z, world_pos[2].z};
+    vec4 light_clip = Perspective_shadow * Model_shadow * vec4{x_world, y_world, z_world, 1};
+    vec2 light_screen = (View_shadow * (light_clip / light_clip.w)).getxy();
+    bool if_shadow = false;
+    constexpr double bias = 0.01; // 防止double计算时产生误差导致大小误判，从而阴影自遮挡
+    if (static_cast<int>(light_screen.x) >= 0 && static_cast<int>(light_screen.x) < Image.width() && static_cast<int>(light_screen.y) >= 0 && static_cast<int>(light_screen.y) < Image.height())
+    {
+      double depth = zbuffer_shadow[static_cast<int>(light_screen.x) + static_cast<int>(light_screen.y) * Image.width()];
+      if_shadow = depth - bias > light_clip.z / light_clip.w;
+      // 对比该点在光源视角下的实际距离与zbuffer中记录的距离，若zbuffer中z坐标值大于实际z坐标值，则该点在阴影中（z坐标值越大越靠前
+    }
+    double visibility = if_shadow ? 0.0 : 1.0;
+
+    double brightness = ambient + visibility * (diffuse + specular);
     for (int i = 0; i < 3; i++)
     {
-      color[i] = AlbedoColor[i] * std::min(1., ambient + diffuse + specular); // 假设物体固有色与光的颜色相同
+      color[i] = AlbedoColor[i] * std::min(1., brightness); // 假设物体固有色与光的颜色相同
     }
 
     return {false, color};
@@ -251,30 +296,49 @@ int main(int argc, char **argv)
     return 1;
   }
 
-  constexpr int width = 800;
-  constexpr int height = 800;
+  constexpr int width = 900;
+  constexpr int height = 900;
 
   TGAImage framebuffer(width, height, TGAImage::RGB);
-  set_zbuffer(width, height);
+  TGAImage shadowbuffer(width, height, TGAImage::RGB);
+  set_zbuffer(width, height, zbuffer);
+  set_zbuffer(width, height, zbuffer_shadow);
 
   constexpr vec3 center{0, 0, 0};
   constexpr vec3 eye{-1, 0, 2};
   constexpr vec3 up{0, 1, 0};
-  constexpr vec3 light{1, 1, 1};
+  constexpr vec3 light_position{1, 1, 1};
+  constexpr vec3 light_diretion{1, 1, 1};
 
-  model(center, eye, up);
-  perspective(norm(eye - center));
-  view(width / 16, height / 16, width * 7 / 8, height * 7 / 8);
+  model(center, eye, up, Model);
+  perspective(norm(eye - center), Perspective);
+  view(width / 16, height / 16, width * 7 / 8, height * 7 / 8, View);
+
+  model(center, light_position, up, Model_shadow);
+  perspective(norm(light_position - center), Perspective_shadow);
+  view(width / 16, height / 16, width * 7 / 8, height * 7 / 8, View_shadow);
 
   for (int j = 1; j < argc; j = j + 4)
   {
     class model model_(argv[j], argv[j + 1], argv[j + 2], argv[j + 3]);
     for (int i = 0; i < model_.nface(); i++)
     {
-      PhongShader shader(model_, light);
+      ShadowShader shader_shadow(model_);
+      Triangle clip_shadow = {shader_shadow.vertex(i, 0), shader_shadow.vertex(i, 1), shader_shadow.vertex(i, 2)};
+      rasterize(clip_shadow, shadowbuffer, shader_shadow, View_shadow, zbuffer_shadow);
+    }
+  }
+
+  for (int j = 1; j < argc; j = j + 4)
+  {
+    class model model_(argv[j], argv[j + 1], argv[j + 2], argv[j + 3]);
+    for (int i = 0; i < model_.nface(); i++)
+    {
+      PhongShader shader(model_, framebuffer, light_diretion);
       // shader.setColor(std::rand() % 255, std::rand() % 255, std::rand() % 255, 255);
+
       Triangle clip = {shader.vertex(i, 0), shader.vertex(i, 1), shader.vertex(i, 2)};
-      rasterize(clip, framebuffer, shader);
+      rasterize(clip, framebuffer, shader, View, zbuffer);
     }
   }
 
