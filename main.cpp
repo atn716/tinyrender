@@ -198,7 +198,7 @@ class PhongShader : public Shader
 {
 private:
   const class model &model_;
-  const TGAImage &Image;
+  const TGAImage &Image_shadow;
   vec3 camera_pos[3]; // 相机空间下坐标
   vec3 world_pos[3];  // 世界空间下坐标
   vec3 normal_cam[3]; // 相机空间下的法向量
@@ -206,7 +206,7 @@ private:
   vec2 uv_pos[3];     // uv空间坐标
 
 public:
-  PhongShader(const class model &m, const TGAImage &image, const vec3 light) : model_(m), Image(image)
+  PhongShader(const class model &m, const TGAImage &image, const vec3 light) : model_(m), Image_shadow(image)
   {
     l = normalize((Model * vec4{light.x, light.y, light.z, 0.0}).getxyz());
   }
@@ -269,9 +269,9 @@ public:
     vec2 light_screen = (View_shadow * (light_clip / light_clip.w)).getxy();
     bool if_shadow = false;
     constexpr double bias = 0.01; // 防止double计算时产生误差导致大小误判，从而阴影自遮挡
-    if (static_cast<int>(light_screen.x) >= 0 && static_cast<int>(light_screen.x) < Image.width() && static_cast<int>(light_screen.y) >= 0 && static_cast<int>(light_screen.y) < Image.height())
+    if (static_cast<int>(light_screen.x) >= 0 && static_cast<int>(light_screen.x) < Image_shadow.width() && static_cast<int>(light_screen.y) >= 0 && static_cast<int>(light_screen.y) < Image_shadow.height())
     {
-      double depth = zbuffer_shadow[static_cast<int>(light_screen.x) + static_cast<int>(light_screen.y) * Image.width()];
+      double depth = zbuffer_shadow[static_cast<int>(light_screen.x) + static_cast<int>(light_screen.y) * Image_shadow.width()];
       if_shadow = depth - bias > light_clip.z / light_clip.w;
       // 对比该点在光源视角下的实际距离与zbuffer中记录的距离，若zbuffer中z坐标值大于实际z坐标值，则该点在阴影中（z坐标值越大越靠前
     }
@@ -298,11 +298,13 @@ int main(int argc, char **argv)
 
   constexpr int width = 900;
   constexpr int height = 900;
+  constexpr int width_shadow = 1024;
+  constexpr int height_shadow = 1024;
 
   TGAImage framebuffer(width, height, TGAImage::RGB);
-  TGAImage shadowbuffer(width, height, TGAImage::RGB);
+  TGAImage shadowbuffer(width_shadow, height_shadow, TGAImage::RGB);
   set_zbuffer(width, height, zbuffer);
-  set_zbuffer(width, height, zbuffer_shadow);
+  set_zbuffer(width_shadow, height_shadow, zbuffer_shadow);
 
   constexpr vec3 center{0, 0, 0};
   constexpr vec3 eye{-1, 0, 2};
@@ -310,33 +312,39 @@ int main(int argc, char **argv)
   constexpr vec3 light_position{1, 1, 1};
   constexpr vec3 light_diretion{1, 1, 1};
 
-  model(center, eye, up, Model);
+  model(center, eye, up, Model); // 设置相机视角下的参数
   perspective(norm(eye - center), Perspective);
   view(width / 16, height / 16, width * 7 / 8, height * 7 / 8, View);
 
-  model(center, light_position, up, Model_shadow);
+  model(center, light_position, up, Model_shadow); // 设置光源视角下的参数
   perspective(norm(light_position - center), Perspective_shadow);
-  view(width / 16, height / 16, width * 7 / 8, height * 7 / 8, View_shadow);
+  view(width_shadow / 16, height_shadow / 16, width_shadow * 7 / 8, height_shadow * 7 / 8, View_shadow);
 
+  std::vector<class model> models;
+  int model_count = (argc - 1) / 4;
+  models.reserve(model_count); // vector.reserve(数量);预先分配容量，不会新增元素
   for (int j = 1; j < argc; j = j + 4)
   {
-    class model model_(argv[j], argv[j + 1], argv[j + 2], argv[j + 3]);
+    models.emplace_back(argv[j], argv[j + 1], argv[j + 2], argv[j + 3]);
+    // vector.emplace_back(构造函数参数...);在 vector 末尾直接构造并加入一个对象
+  }
+
+  for (const class model &model_ : models)
+  {
+    ShadowShader shader_shadow(model_);
     for (int i = 0; i < model_.nface(); i++)
     {
-      ShadowShader shader_shadow(model_);
       Triangle clip_shadow = {shader_shadow.vertex(i, 0), shader_shadow.vertex(i, 1), shader_shadow.vertex(i, 2)};
       rasterize(clip_shadow, shadowbuffer, shader_shadow, View_shadow, zbuffer_shadow);
     }
   }
 
-  for (int j = 1; j < argc; j = j + 4)
+  for (const class model &model_ : models)
   {
-    class model model_(argv[j], argv[j + 1], argv[j + 2], argv[j + 3]);
+    PhongShader shader(model_, shadowbuffer, light_diretion);
     for (int i = 0; i < model_.nface(); i++)
     {
-      PhongShader shader(model_, framebuffer, light_diretion);
       // shader.setColor(std::rand() % 255, std::rand() % 255, std::rand() % 255, 255);
-
       Triangle clip = {shader.vertex(i, 0), shader.vertex(i, 1), shader.vertex(i, 2)};
       rasterize(clip, framebuffer, shader, View, zbuffer);
     }

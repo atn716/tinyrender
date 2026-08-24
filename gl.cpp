@@ -63,6 +63,8 @@ void rasterize(const Triangle &clip, TGAImage &image, const Shader &shader, cons
   int maxy = std::max(std::max(screen[0].y, screen[1].y), screen[2].y);
   int miny = std::min(std::min(screen[0].y, screen[1].y), screen[2].y);
 
+  matrix<3, 3> ABC_inverse = inverse(ABC);
+
 #pragma omp parallel for // OpenMP(多线程并行编程库)中专门用于自动将 for
                          // 循环拆分成多线程并行执行
   for (int x = std::max(minx, 0); x <= std::min(maxx, image.width() - 1); x++)
@@ -70,9 +72,9 @@ void rasterize(const Triangle &clip, TGAImage &image, const Shader &shader, cons
     for (int y = std::max(miny, 0);
          y <= std::min(maxy, image.height() - 1); y++)
     {
-      vec3 screen_abc =                                                           // 权重
-          inverse(ABC) * vec3{static_cast<double>(x), static_cast<double>(y), 1}; // static_cast<double>(x)将x安全地转换为double
-      if (screen_abc.x < 0 || screen_abc.y < 0 || screen_abc.z < 0)               // 小于0说明该面为模型的背面，不用画
+      vec3 screen_abc =                                                          // 权重
+          ABC_inverse * vec3{static_cast<double>(x), static_cast<double>(y), 1}; // static_cast<double>(x)将x安全地转换为double
+      if (screen_abc.x < 0 || screen_abc.y < 0 || screen_abc.z < 0)              // 小于0说明该面为模型的背面，不用画
         continue;
 
       vec3 abc = {screen_abc.x / clip[0].w, screen_abc.y / clip[1].w, screen_abc.z / clip[2].w};
