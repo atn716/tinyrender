@@ -18,8 +18,8 @@ private:
 
 public:
   model(const std::string &filename_obj, const std::string &filename_tex, const std::string &filename_diff, const std::string &filename_spec);
-  int nvertex() { return vertex.size(); }
-  int nface() { return face_v.size(); }
+  int nvertex() const { return vertex.size(); }
+  int nface() const { return face_v.size(); }
   TGAColor getcolor(const vec2 uv, const TGAImage &map) const;
   vec3 getvertex(const int i) const;
   vec3 getvertex(const int face_index, const int vertex_index) const;

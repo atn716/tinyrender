@@ -267,16 +267,38 @@ public:
     double z_world = abc * vec3{world_pos[0].z, world_pos[1].z, world_pos[2].z};
     vec4 light_clip = Perspective_shadow * Model_shadow * vec4{x_world, y_world, z_world, 1};
     vec2 light_screen = (View_shadow * (light_clip / light_clip.w)).getxy();
-    bool if_shadow = false;
     constexpr double bias = 0.01; // 防止double计算时产生误差导致大小误判，从而阴影自遮挡
-    if (static_cast<int>(light_screen.x) >= 0 && static_cast<int>(light_screen.x) < Image_shadow.width() && static_cast<int>(light_screen.y) >= 0 && static_cast<int>(light_screen.y) < Image_shadow.height())
+    constexpr int radius = 1;     // 采样半径
+    int center_x = static_cast<int>(light_screen.x);
+    int center_y = static_cast<int>(light_screen.y);
+    double visibility = 0.0;
+    int sample_count = 0;
+    for (int x = -radius; x <= radius; x++)
     {
-      double depth = zbuffer_shadow[static_cast<int>(light_screen.x) + static_cast<int>(light_screen.y) * Image_shadow.width()];
-      if_shadow = depth - bias > light_clip.z / light_clip.w;
-      // 对比该点在光源视角下的实际距离与zbuffer中记录的距离，若zbuffer中z坐标值大于实际z坐标值，则该点在阴影中（z坐标值越大越靠前
+      for (int y = -radius; y <= radius; y++)
+      {
+        int fx = x + center_x;
+        int fy = y + center_y;
+        if (fx >= 0 && fx < Image_shadow.width() && fy >= 0 && fy < Image_shadow.height())
+        {
+          double depth = zbuffer_shadow[fx + fy * Image_shadow.width()];
+          bool if_shadow = false;
+          if_shadow = depth - bias > light_clip.z / light_clip.w;
+          // 对比该点在光源视角下的实际距离与zbuffer中记录的距离，若zbuffer中z坐标值大于实际z坐标值，则该点在阴影中（z坐标值越大越靠前
+          visibility += if_shadow ? 0.0 : 1.0;
+          sample_count++;
+        }
+      }
     }
-    double visibility = if_shadow ? 0.0 : 1.0;
 
+    if (sample_count == 0)
+    {
+      visibility = 1.0;
+    }
+    else
+    {
+      visibility /= sample_count;
+    }
     double brightness = ambient + visibility * (diffuse + specular);
     for (int i = 0; i < 3; i++)
     {
