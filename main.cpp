@@ -1,5 +1,6 @@
 #include "gl.h"
 #include "model.h"
+#include <cstdlib>
 // #include <tuple>
 
 constexpr TGAColor white = {255, 255, 255, 255}; // attention, BGRA order
@@ -7,6 +8,7 @@ constexpr TGAColor green = {0, 255, 0, 255};
 constexpr TGAColor red = {0, 0, 255, 255};
 constexpr TGAColor blue = {255, 128, 64, 255};
 constexpr TGAColor yellow = {0, 200, 255, 255};
+constexpr double PI = 3.141592653;
 
 // void line(int ax, int ay, int bx, int by, TGAImage &image, const TGAColor
 // &color)
@@ -140,6 +142,8 @@ extern std::vector<double> zbuffer;
 extern matrix<4, 4> Model_shadow, Perspective_shadow, View_shadow;
 extern std::vector<double> zbuffer_shadow;
 
+extern std::vector<double> zbuffer_ao;
+
 // class PhongShader : public Shader
 // {
 // private:
@@ -171,6 +175,34 @@ extern std::vector<double> zbuffer_shadow;
 //   }
 // };
 
+double random()
+{
+  return double(std::rand()) / double(RAND_MAX);
+  // 生成随机数0-1
+}
+
+class AoShader : public Shader
+{
+private:
+  const class model &model_;
+
+public:
+  AoShader(const class model &m) : model_(m) {}
+
+  virtual vec4 vertex(const int face_index, const int vertex_index)
+  {
+    vec4 clip_position;
+    auto [x, y, z] = model_.getvertex(face_index, vertex_index);
+    clip_position = Perspective * Model * vec4{x, y, z, 1};
+
+    return clip_position;
+  }
+
+  virtual std::pair<bool, TGAColor> fragment(const vec3 &abc) const
+  {
+    return {false, white};
+  }
+};
 class ShadowShader : public Shader
 {
 private:
@@ -199,14 +231,16 @@ class PhongShader : public Shader
 private:
   const class model &model_;
   const TGAImage &Image_shadow;
-  vec3 camera_pos[3]; // 相机空间下坐标
-  vec3 world_pos[3];  // 世界空间下坐标
-  vec3 normal_cam[3]; // 相机空间下的法向量
-  vec3 l;             // 指向光源的向量
-  vec2 uv_pos[3];     // uv空间坐标
+  const TGAImage &Image_ao;
+  vec3 camera_pos[3];   // 相机空间下坐标
+  vec3 world_pos[3];    // 世界空间下坐标
+  vec3 normal_cam[3];   // 相机空间下的法向量
+  vec3 normal_world[3]; // 世界空间下的法向量
+  vec3 l;               // 指向光源的向量
+  vec2 uv_pos[3];       // uv空间坐标
 
 public:
-  PhongShader(const class model &m, const TGAImage &image, const vec3 light) : model_(m), Image_shadow(image)
+  PhongShader(const class model &m, const TGAImage &image_shadow, const TGAImage &image_ao, const vec3 light) : model_(m), Image_shadow(image_shadow), Image_ao(image_ao)
   {
     l = normalize((Model * vec4{light.x, light.y, light.z, 0.0}).getxyz());
   }
@@ -217,8 +251,11 @@ public:
     auto [x, y, z] = model_.getvertex(face_index, vertex_index);
     world_pos[vertex_index] = vec3{x, y, z};
     camera_pos[vertex_index] = (Model * vec4{x, y, z, 1}).getxyz();
+
     vec3 n = model_.getnormal(face_index, vertex_index);
     normal_cam[vertex_index] = (((inverse(Model)).transpose()) * vec4{n.x, n.y, n.z, 0.}).getxyz();
+    normal_world[vertex_index] = n;
+
     uv_pos[vertex_index] = model_.getuv(face_index, vertex_index);
     clip_position = Perspective * Model * vec4{x, y, z, 1};
 
@@ -230,19 +267,19 @@ public:
     // TGAColor AlbedoColor = white;
     // TGAColor color = AlbedoColor;
     //  vec3 n = normalize(cross((camera_pos[0] - camera_pos[1]), (camera_pos[0] - camera_pos[2]))); // 片元法向量
-    vec3 n_world = normalize(abc[0] * normal_cam[0] + abc[1] * normal_cam[1] + abc[2] * normal_cam[2]);
+    vec3 n_camera = normalize(abc[0] * normal_cam[0] + abc[1] * normal_cam[1] + abc[2] * normal_cam[2]);
     vec2 uv = abc[0] * uv_pos[0] + abc[1] * uv_pos[1] + abc[2] * uv_pos[2];
-    vec3 n_tangent = normalize(model_.getnormal(uv));
+    vec3 n_tangent = normalize(model_.getnormal(uv)); // 通过法线贴图解析出的法线
 
     matrix<2, 3> E = {camera_pos[1] - camera_pos[0], camera_pos[2] - camera_pos[0]};
     matrix<2, 2> U = {uv_pos[1] - uv_pos[0], uv_pos[2] - uv_pos[0]};
 
-    vec3 n = n_world;
+    vec3 n = n_camera;
     if (std::abs(det(U)) > 1e-8)
     {
       matrix<2, 3> TB = inverse(U) * E;
-      matrix<3, 3> TBN = {normalize(TB[0]), normalize(TB[1]), n_world};
-      n = normalize(TBN.transpose() * n_tangent);
+      matrix<3, 3> TBN_tangent = {normalize(TB[0]), normalize(TB[1]), n_camera}; // 法线贴图的TBN矩阵，由三角形顶点位置和 UV 计算
+      n = normalize(TBN_tangent.transpose() * n_tangent);
     }
 
     vec3 r = normalize(2 * (l * n) * n - l);
@@ -267,15 +304,15 @@ public:
     double z_world = abc * vec3{world_pos[0].z, world_pos[1].z, world_pos[2].z};
     vec4 light_clip = Perspective_shadow * Model_shadow * vec4{x_world, y_world, z_world, 1};
     vec2 light_screen = (View_shadow * (light_clip / light_clip.w)).getxy();
-    constexpr double bias = 0.01; // 防止double计算时产生误差导致大小误判，从而阴影自遮挡
-    constexpr int radius = 1;     // 采样半径
+    constexpr double bias_shadow = 0.01; // 防止double计算时产生误差导致大小误判，从而阴影自遮挡
+    constexpr int radius_shadow = 1;     // 阴影采样半径
     int center_x = static_cast<int>(light_screen.x);
     int center_y = static_cast<int>(light_screen.y);
     double visibility = 0.0;
-    int sample_count = 0;
-    for (int x = -radius; x <= radius; x++)
+    int sample_count_shadow = 0;
+    for (int x = -radius_shadow; x <= radius_shadow; x++)
     {
-      for (int y = -radius; y <= radius; y++)
+      for (int y = -radius_shadow; y <= radius_shadow; y++)
       {
         int fx = x + center_x;
         int fy = y + center_y;
@@ -283,23 +320,61 @@ public:
         {
           double depth = zbuffer_shadow[fx + fy * Image_shadow.width()];
           bool if_shadow = false;
-          if_shadow = depth - bias > light_clip.z / light_clip.w;
+          if_shadow = depth - bias_shadow > light_clip.z / light_clip.w;
           // 对比该点在光源视角下的实际距离与zbuffer中记录的距离，若zbuffer中z坐标值大于实际z坐标值，则该点在阴影中（z坐标值越大越靠前
           visibility += if_shadow ? 0.0 : 1.0;
-          sample_count++;
+          sample_count_shadow++;
         }
       }
     }
 
-    if (sample_count == 0)
+    if (sample_count_shadow == 0)
     {
       visibility = 1.0;
     }
     else
     {
-      visibility /= sample_count;
+      visibility /= sample_count_shadow;
     }
-    double brightness = ambient + visibility * (diffuse + specular);
+
+    double ao = 1.0;
+    double ao_sum = 0.0;
+    constexpr double radius_ao = 0.1; // 环境光遮蔽的半球采样半径
+    constexpr int sample_count_ao = 8;
+    constexpr double bias_ao = 0.01;
+    vec3 n_world = normalize(abc[0] * normal_world[0] + abc[1] * normal_world[1] + abc[2] * normal_world[2]);
+    vec3 reference = (std::abs(n_world.z) < 0.999) ? vec3{0, 0, 1} : vec3{0, 1, 0};
+    // 若 abs(N.z) >= 0.999，说明 n 靠近 z 轴方向, 不可能同时靠近 y 轴；std::abs(N.z) < 0.999，则 n 远离 z 轴（n为单位向量
+    vec3 T_ao = normalize(cross(n_world, reference)); // ao计算时的切向量
+    vec3 B_ao = normalize(cross(n_world, T_ao));      // ao计算时的副切向量
+    for (int i = 0; i < sample_count_ao; i++)
+    {
+      // 生成xy平面上方单位半球（保证z>0）上的点
+      double z_ao = random();                                                    // 生成高
+      double r_ao = std::sqrt(1.0 - z_ao * z_ao);                                // 点所在小圆的半径
+      double phi = random() * 2 * PI;                                            // 点在小圆上的角度（极坐标
+      vec3 direction_local = {r_ao * std::cos(phi), r_ao * std::sin(phi), z_ao}; // xy平面上方半球
+      // 旋转半球至法线方向一侧
+      vec3 direction = direction_local.x * T_ao + direction_local.y * B_ao + direction_local.z * n_world;
+
+      vec3 sample_pos = vec3{x_world, y_world, z_world} + radius_ao * direction;
+      vec4 ao_clip = Perspective * Model * vec4{sample_pos.x, sample_pos.y, sample_pos.z, 1};
+      vec2 ao_screen = (View * ao_clip / ao_clip.w).getxy();
+
+      int fx = static_cast<int>(ao_screen.x);
+      int fy = static_cast<int>(ao_screen.y);
+      if (fx >= 0 && fx < Image_ao.width() && fy >= 0 && fy < Image_ao.height())
+      {
+        double depth = zbuffer_ao[fx + fy * Image_ao.width()];
+        if (depth - bias_ao > ao_clip.z / ao_clip.w)
+        {
+          ao_sum++;
+        }
+      }
+    }
+    ao = 1.0 - ao_sum / sample_count_ao;
+
+    double brightness = ao * ambient + visibility * (diffuse + specular);
     for (int i = 0; i < 3; i++)
     {
       color[i] = AlbedoColor[i] * std::min(1., brightness); // 假设物体固有色与光的颜色相同
@@ -325,7 +400,9 @@ int main(int argc, char **argv)
 
   TGAImage framebuffer(width, height, TGAImage::RGB);
   TGAImage shadowbuffer(width_shadow, height_shadow, TGAImage::RGB);
+  TGAImage aobuffer(width, height, TGAImage::RGB);
   set_zbuffer(width, height, zbuffer);
+  set_zbuffer(width, height, zbuffer_ao);
   set_zbuffer(width_shadow, height_shadow, zbuffer_shadow);
 
   constexpr vec3 center{0, 0, 0};
@@ -363,7 +440,17 @@ int main(int argc, char **argv)
 
   for (const class model &model_ : models)
   {
-    PhongShader shader(model_, shadowbuffer, light_diretion);
+    AoShader shader_ao(model_);
+    for (int i = 0; i < model_.nface(); i++)
+    {
+      Triangle clip_ao = {shader_ao.vertex(i, 0), shader_ao.vertex(i, 1), shader_ao.vertex(i, 2)};
+      rasterize(clip_ao, aobuffer, shader_ao, View, zbuffer_ao);
+    }
+  }
+
+  for (const class model &model_ : models)
+  {
+    PhongShader shader(model_, shadowbuffer, aobuffer, light_diretion);
     for (int i = 0; i < model_.nface(); i++)
     {
       // shader.setColor(std::rand() % 255, std::rand() % 255, std::rand() % 255, 255);

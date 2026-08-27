@@ -10,6 +10,8 @@ matrix<4, 4> Perspective_shadow;
 matrix<4, 4> View_shadow;
 std::vector<double> zbuffer_shadow;
 
+std::vector<double> zbuffer_ao;
+
 void set_zbuffer(const int width, const int height, std::vector<double> &depth_buffer)
 {
   depth_buffer = std::vector<double>(width * height, -std::numeric_limits<double>::max()); // 初始化为极小数字,无穷小，-std::numeric_limits<double>::max() 代表的是 double 浮点数能表示的“最小负数”（也就是绝对值最大的负值）
